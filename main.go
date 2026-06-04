@@ -3,28 +3,27 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	input :="$5\r\nveeya\r\n"
-	reader:=bufio.NewReader(strings.NewReader(input))
+	input := "$5\r\nveeya\r\n"                          // just an input string
+	reader := bufio.NewReader(strings.NewReader(input)) // string converted to bufio buffer
 
-	b,_:=reader.ReadByte()\
-	if b!='$' {
-		fmt.println("invalid type, expexting bulk strings only") //basically smth like $\r\n....\r\n
+	b, _ := reader.ReadByte() // data stype that is taken as input ($ is bulk string)
+	if b != '$' {
+		fmt.Println("invalid type, expexting bulk strings only") //basically smth like $\r\n....\r\n
+		os.Exit(1)
 	}
-	size,_:=reader.ReadByte()
-	strsize,_:=strconv.ParseInt(string(size),10,64)
-	reader.ReadByte()
-	reader.ReadByte()
+	size, _ := reader.ReadByte()                         // size of string
+	strsize, _ := strconv.ParseInt(string(size), 10, 64) // converting to int
+	reader.ReadByte()                                    // \r
+	reader.ReadByte()                                    // \n
 
-	name:=make([]byte,strsize)
-	reader.Read(name)
+	name := make([]byte, strsize) // array of all input string bytes
+	reader.Read(name)             // reading it
 	fmt.Println(string(name))
 	// // a tcp listener
 	// l, err := net.Listen("tcp", ":6379")
