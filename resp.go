@@ -103,3 +103,76 @@ func (r *Resp) readBulk() (value, error) {
 	r.readline()
 	return v, nil
 }
+
+// write RESP
+
+type Writer struct {
+	writer io.Writer
+}
+
+func Newwriter(w io.Writer) *Writer {
+	return &Writer{writer: w}
+}
+
+func (w *Writer) write(v value) error {
+	var bytes = v.marshal()
+	_, err := w.writer.Write(bytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v value) marshal() []byte {
+	switch v.typ {
+	case "array":
+		return v.marshalarray()
+	case "bulk":
+		return v.marshalbulk()
+	case "string":
+		return v.marshalstring()
+	case "null":
+		return v.marshalnull()
+	case "error":
+		return v.marshalerror()
+	default:
+		return []byte{}
+	}
+}
+func (v value) marshalstring() []byte {
+	var bytes []byte
+	bytes = append(bytes, STRING)
+	bytes = append(bytes, v.str...)
+	bytes = append(bytes, '\r', '\n')
+	return bytes
+}
+func (v value) marshalbulk() []byte {
+	var bytes []byte
+	bytes = append(bytes, BULK)
+	bytes = append(bytes, strconv.Itoa(len(v.bulk))...)
+	bytes = append(bytes, '\r', '\n')
+	bytes = append(bytes, v.bulk...)
+	bytes = append(bytes, '\r', '\n')
+	return bytes
+}
+func (v value) marshalarray() []byte {
+	length := len(v.array)
+	var bytes []byte
+	bytes = append(bytes, ARRAY)
+	bytes = append(bytes, strconv.Itoa(length)...)
+	bytes = append(bytes, '\r', '\n')
+	for i := 0; i < length; i++ {
+		bytes = append(bytes, v.array[i].marshal()...)
+	}
+	return bytes
+}
+func (v value) marshalerror() []byte {
+	var bytes []byte
+	bytes = append(bytes, ERROR)
+	bytes = append(bytes, v.str...)
+	bytes = append(bytes, '\r', '\n')
+	return bytes
+}
+func (v value) marshalnull() []byte {
+	return []byte("$-1\r\n")
+}
