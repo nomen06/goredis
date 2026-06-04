@@ -69,6 +69,7 @@ func (r *Resp) read() (value, error) {
 		return r.readBulk()
 	default:
 		fmt.Printf("Unknown type :%v", string(_type))
+		return value{}, nil
 	}
 }
 func (r *Resp) readArray() (value, error) {
