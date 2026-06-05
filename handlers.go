@@ -98,3 +98,21 @@ func hget(args []value) value {
 		bulk: val,
 	}
 }
+func hgetall(args []value) value {
+	if len(args) != 1 {
+		return value{typ: "error", str: "ERR hgetall requires only 1 argument"}
+	}
+	hash := args[0].bulk
+	HSETsMu.RLock()
+	inner, ok := HSETs[hash]
+	HSETsMu.RUnlock()
+	if !ok {
+		return value{typ: "null"}
+	}
+	var result []value
+	for k, v := range inner {
+		result = append(result, value{typ: "bulk", bulk: k})
+		result = append(result, value{typ: "bulk", bulk: v})
+	}
+	return value{typ: "array", array: result}
+}
