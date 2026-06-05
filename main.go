@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 func main() {
@@ -41,12 +42,33 @@ func main() {
 	// an infite loop of listening to the requests but
 	for {
 		resp := Newresp(conn)
-		value, err := resp.read()
+		val, err := resp.read()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		fmt.Println(value)
-		conn.Write([]byte("+OK\r\n")) // but here just giving back a pong confirmation (demo setup)
+		if val.typ != "array" {
+			fmt.Println("Invalid request,expected array")
+			continue
+		}
+		if len(val.array) == 0 {
+			fmt.Println("Invalid request,expected array of len>0")
+			continue
+		}
+		command := strings.ToUpper(val.array[0].bulk)
+		args := val.array[1:]
+
+		writer := Newwriter(conn)
+		handler, ok := handlers[command]
+		if !ok {
+			fmt.Println("Invalid command: ", command)
+			writer.write(value{typ: "string", str: ""})
+			continue
+		}
+		result := handler(args)
+		writer.write(result)
+		// writer.write(value{typ:"str",str:"ok"})
+		// fmt.Println(value)
+		// conn.Write([]byte("+OK\r\n")) // but here just giving back a pong confirmation (demo setup)
 	}
 }
