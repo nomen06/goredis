@@ -24,13 +24,19 @@ func main() {
 	// reader.Read(name)             // reading it
 	// fmt.Println(string(name))
 
+	fmt.Println("Listening on :6379")
 	// a tcp listener
 	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println("Listening on :6379")
+	AOF, err := Newaof("database.aof")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer AOF.close()
 	// reciveing requests
 	conn, err := l.Accept()
 	if err != nil {
@@ -64,6 +70,10 @@ func main() {
 			fmt.Println("Invalid command: ", command)
 			writer.write(value{typ: "string", str: ""})
 			continue
+		}
+		//writing in aof
+		if command == "SET" || command == "HSET" {
+			AOF.write(val)
 		}
 		result := handler(args)
 		writer.write(result)

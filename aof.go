@@ -33,4 +33,21 @@ func Newaof(path string) (*Aof, error) {
 	return aof, nil
 }
 
-func close()
+// to ensure aof is closed propwrly after server shuts down
+func (aof *Aof) close() error {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+	return aof.file.Close()
+}
+
+//write method for commands in aof
+
+func (aof *Aof) write(val value) error {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
+	_, err := aof.file.Write(val.marshal())
+	if err != nil {
+		return err
+	}
+	return nil
+}
