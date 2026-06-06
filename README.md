@@ -32,7 +32,8 @@ redis-cli
 ## Structure
 
 ```
-main.go       — TCP server on :6379
+main.go       — TCP server on :6379, handles concurrent clients
 resp.go       — RESP protocol parser and writer
 handlers.go   — command logic and in-memory store
+aof.go        — append-only file persistence, syncs to disk every second and replays on startup
 ```
