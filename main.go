@@ -25,24 +25,47 @@ func main() {
 	// fmt.Println(string(name))
 
 	fmt.Println("Listening on :6379")
+
 	// a tcp listener
 	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	//aof initialised
 	AOF, err := Newaof("database.aof")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer AOF.close()
-	// reciveing requests
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println(err)
+
+	defer AOF.close() // close when server is shut off
+
+	if err := AOF.read(func(val value) {
+		prevcommands := strings.ToUpper(val.array[0].bulk)
+		args := val.array[1:]
+		handler, ok := handlers[prevcommands]
+		if !ok {
+			fmt.Println("Invalid command while replaying aof: ", prevcommands)
+			return
+		}
+		handler(args)
+	}); err != nil {
+		fmt.Println("AOF replay error:", err)
 		return
 	}
+	for {
+		// reciveing requests
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		go handleconn(conn, AOF)
+
+	}
+}
+func handleconn(conn net.Conn, AOF *Aof) {
 	defer conn.Close() // closes connection after finishing (not really required here but is a good practice and will be of good use later)
 
 	// an infite loop of listening to the requests but
