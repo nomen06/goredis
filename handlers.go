@@ -1,6 +1,10 @@
 package main
 
-import "sync"
+import (
+	"strconv"
+	"sync"
+	"time"
+)
 
 var handlers = map[string]func([]value) value{
 	"PING":    ping,
@@ -9,6 +13,8 @@ var handlers = map[string]func([]value) value{
 	"HSET":    hset,
 	"HGET":    hget,
 	"HGETALL": hgetall,
+	"EXPIRE":  expire,
+	"TTL":     ttl,
 }
 
 func ping(args []value) value {
@@ -46,6 +52,21 @@ func get(args []value) value {
 		}
 	}
 	key := args[0].bulk
+	EXPIREsMu.Lock()
+	expiry, expcheck := EXPIREs[key]
+	if expcheck {
+		if time.Now().After(expiry) {
+			SETsMu.Lock()
+			delete(SETs, key)
+			SETsMu.Unlock()
+			delete(EXPIREs, key)
+			EXPIREsMu.Unlock()
+			return value{
+				typ: "null",
+			}
+		}
+	}
+	EXPIREsMu.Unlock()
 	SETsMu.RLock()
 	val, ok := SETs[key]
 	SETsMu.RUnlock()
@@ -115,4 +136,83 @@ func hgetall(args []value) value {
 		result = append(result, value{typ: "bulk", bulk: v})
 	}
 	return value{typ: "array", array: result}
+}
+
+var EXPIREs = map[string]time.Time{}
+var EXPIREsMu = sync.RWMutex{}
+
+func expire(args []value) value {
+	if len(args) != 2 {
+		return value{typ: "error", str: "ERR,invalid number of arguments for EXPIRE command"}
+	}
+	key := args[0].bulk
+	val := args[1].bulk
+	SETsMu.RLock()
+	_, ok := SETs[key]
+	SETsMu.RUnlock()
+	if !ok {
+		return value{
+			typ: "integer",
+			num: 0,
+		}
+	}
+	secs, err := strconv.Atoi(val)
+	if err != nil {
+		return value{
+			typ: "error",
+			str: "ERR value is not an integer",
+		}
+	}
+	deadline := time.Now().Add(time.Duration(secs) * time.Second)
+	EXPIREsMu.Lock()
+	EXPIREs[key] = deadline
+	EXPIREsMu.Unlock()
+	return value{
+		typ: "integer",
+		num: 1,
+	}
+}
+
+func ttl(args []value) value {
+	if len(args) != 1 {
+		return value{
+			typ: "error",
+			str: "ERR invalid number of args for ttl",
+		}
+	}
+	key := args[0].bulk
+	SETsMu.RLock()
+	_, ok := SETs[key]
+	SETsMu.RUnlock()
+	if !ok {
+		return value{
+			typ: "integer",
+			num: -2,
+		}
+	}
+	EXPIREsMu.Lock()
+	expiry, check := EXPIREs[key]
+	if !check {
+		EXPIREsMu.Unlock()
+		return value{
+			typ: "integer",
+			num: -1,
+		}
+	}
+	if time.Now().After(expiry) {
+		SETsMu.Lock()
+		delete(SETs, key)
+		SETsMu.Unlock()
+		delete(EXPIREs, key)
+		EXPIREsMu.Unlock()
+		return value{
+			typ: "null",
+		}
+	}
+	ttl := time.Until(expiry)
+	EXPIREsMu.Unlock()
+	return value{
+		typ: "integer",
+		num: int(ttl.Seconds()),
+	}
 }
