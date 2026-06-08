@@ -7,7 +7,7 @@ A Redis clone written in Go from scratch using only the standard library.
 ```bash
 git clone https://github.com/nomen06/goredis
 cd goredis
-go run .
+go run *.go
 ```
 
 Then in another terminal:
