@@ -16,6 +16,34 @@ var handlers = map[string]func([]value) value{
 	"EXPIRE":    expire,
 	"TTL":       ttl,
 	"SUBSCRIBE": subscribe,
+	"PUBLISH":   publish,
+}
+
+func publish(args []value) value {
+	if len(args) != 2 {
+		return value{
+			typ: "error",
+			str: "ERR wrong number of arguments for a PUBLISH command",
+		}
+	}
+	channel := args[0].bulk
+	message := args[1].bulk
+	SUBSCRIBEsMu.RLock()
+	_, check := SUBSCRIBEs[channel]
+	if !check {
+		return value{
+			typ: "integer",
+			num: 0,
+		}
+	}
+	SUBSCRIBEsMu.RUnlock()
+	for _, ch := range SUBSCRIBEs[channel] {
+		go func(ch chan string) { ch <- message }(ch)
+	}
+	return value{
+		typ:  "bulk",
+		bulk: message,
+	}
 }
 
 var SUBSCRIBEs = map[string][]chan string{} // [] because multiple users can listen to a single channel
