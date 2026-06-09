@@ -7,16 +7,38 @@ import (
 )
 
 var handlers = map[string]func([]value) value{
-	"PING":    ping,
-	"SET":     set,
-	"GET":     get,
-	"HSET":    hset,
-	"HGET":    hget,
-	"HGETALL": hgetall,
-	"EXPIRE":  expire,
-	"TTL":     ttl,
+	"PING":      ping,
+	"SET":       set,
+	"GET":       get,
+	"HSET":      hset,
+	"HGET":      hget,
+	"HGETALL":   hgetall,
+	"EXPIRE":    expire,
+	"TTL":       ttl,
+	"SUBSCRIBE": subscribe,
 }
 
+var SUBSCRIBEs = map[string][]chan string{} // [] because multiple users can listen to a single channel
+var SUBSCRIBEsMu = sync.RWMutex{}
+
+func subscribe(args []value) value {
+	if len(args) != 1 {
+		return value{
+			typ: "error",
+			str: "ERR wrong number of arguments for a SUBSCRIBE command",
+		}
+	}
+	channel := args[0].bulk
+	ch := make(chan string)
+	SUBSCRIBEsMu.Lock()
+	SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel], ch) // this makes that multiple user thing make happen
+	SUBSCRIBEsMu.Unlock()
+	msg := <-ch
+	return value{
+		typ: "string",
+		str: msg,
+	}
+}
 func ping(args []value) value {
 	if len(args) == 0 {
 		return value{typ: "string", str: "PONG"}
