@@ -88,6 +88,16 @@ func handleconn(conn net.Conn, AOF *Aof) {
 		args := val.array[1:]
 
 		writer := Newwriter(conn)
+		switch command {
+		case "SUBSCRIBE":
+			result := subscribe(args, conn)
+			writer.write(result)
+			continue
+		case "UNSUBSCRIBE":
+			result := unsubscribe(args, conn)
+			writer.write(result)
+			continue
+		}
 		handler, ok := handlers[command]
 		if !ok {
 			fmt.Println("Invalid command: ", command)

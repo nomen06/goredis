@@ -1,22 +1,55 @@
 package main
 
 import (
+	"net"
 	"strconv"
 	"sync"
 	"time"
 )
 
 var handlers = map[string]func([]value) value{
-	"PING":      ping,
-	"SET":       set,
-	"GET":       get,
-	"HSET":      hset,
-	"HGET":      hget,
-	"HGETALL":   hgetall,
-	"EXPIRE":    expire,
-	"TTL":       ttl,
-	"SUBSCRIBE": subscribe,
-	"PUBLISH":   publish,
+	"PING":    ping,
+	"SET":     set,
+	"GET":     get,
+	"HSET":    hset,
+	"HGET":    hget,
+	"HGETALL": hgetall,
+	"EXPIRE":  expire,
+	"TTL":     ttl,
+	"PUBLISH": publish,
+}
+
+func unsubscribe(args []value, conn net.Conn) value {
+	if len(args) != 1 {
+		return value{
+			typ: "error",
+			str: "ERR wrong number of arguments for an UNSUBSCRIBE command",
+		}
+	}
+	channel := args[0].bulk
+
+	SUBSCRIBEsMu.Lock()
+	defer SUBSCRIBEsMu.Unlock()
+	_, check := SUBSCRIBEs[channel]
+	if !check {
+		return value{
+			typ: "integer",
+			num: 0,
+		}
+	}
+	for i, ch := range SUBSCRIBEs[channel] {
+		if ch.conn == conn {
+			SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel][:i], SUBSCRIBEs[channel][i+1:]...)
+			return value{
+				typ: "integer",
+				num: len(SUBSCRIBEs[channel]),
+			}
+		}
+	}
+	return value{
+		typ: "integer",
+		num: len(SUBSCRIBEs[channel]),
+	}
 }
 
 func publish(args []value) value {
@@ -31,14 +64,14 @@ func publish(args []value) value {
 	SUBSCRIBEsMu.RLock()
 	_, check := SUBSCRIBEs[channel]
 	if !check {
+		SUBSCRIBEsMu.RUnlock()
 		return value{
 			typ: "integer",
 			num: 0,
 		}
 	}
-	SUBSCRIBEsMu.RUnlock()
 	for _, ch := range SUBSCRIBEs[channel] {
-		go func(ch chan string) { ch <- message }(ch)
+		go func(ch chan string) { ch <- message }(ch.ch) // ch may change overtime so passed ch as an arg in the func
 	}
 	return value{
 		typ:  "bulk",
@@ -46,10 +79,18 @@ func publish(args []value) value {
 	}
 }
 
-var SUBSCRIBEs = map[string][]chan string{} // [] because multiple users can listen to a single channel
+// var SUBSCRIBEs = map[string][]chan string{} // [] because multiple users can listen to a single channel
+// so i cannot simply store it like above because now i need to implement unsubscribe and for that i need somtehing that is unique about all the clients
+// since that is the connection between them, hence
+type Subscriber struct {
+	conn net.Conn
+	ch   chan string
+}
+
+var SUBSCRIBEs = map[string][]Subscriber{}
 var SUBSCRIBEsMu = sync.RWMutex{}
 
-func subscribe(args []value) value {
+func subscribe(args []value, conn net.Conn) value {
 	if len(args) != 1 {
 		return value{
 			typ: "error",
@@ -58,8 +99,9 @@ func subscribe(args []value) value {
 	}
 	channel := args[0].bulk
 	ch := make(chan string)
+	sub := Subscriber{conn: conn, ch: ch}
 	SUBSCRIBEsMu.Lock()
-	SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel], ch) // this makes that multiple user thing make happen
+	SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel], sub) // this makes that multiple user thing make happen
 	SUBSCRIBEsMu.Unlock()
 	msg := <-ch
 	return value{
