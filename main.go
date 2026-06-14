@@ -7,6 +7,7 @@ import (
 )
 
 func main() {
+	fmt.Println("Available handlers:", len(handlers))
 	// input := "$5\r\nveeya\r\n"                          // just an input string
 	// reader := bufio.NewReader(strings.NewReader(input)) // string converted to bufio buffer
 
@@ -66,7 +67,13 @@ func main() {
 	}
 }
 func handleconn(conn net.Conn, AOF *Aof) {
-	defer conn.Close() // closes connection after finishing (not really required here but is a good practice and will be of good use later)
+	// defer conn.Close() // closes connection after finishing (not really required here but is a good practice and will be of good use later)
+
+	// to cleanup subscribe when connection is closed
+	defer func() {
+		cleanup(conn)
+		conn.Close()
+	}()
 
 	// an infite loop of listening to the requests but
 	for {
@@ -90,8 +97,20 @@ func handleconn(conn net.Conn, AOF *Aof) {
 		writer := Newwriter(conn)
 		switch command {
 		case "SUBSCRIBE":
-			result := subscribe(args, conn)
-			writer.write(result)
+			subscribe(args, conn)
+			for {
+				resp := Newresp(conn)
+				val, err := resp.read()
+				if err != nil {
+					return
+				}
+				cmd := strings.ToUpper(val.array[0].bulk)
+				if cmd == "UNSUBSCRIBE" {
+					result := unsubscribe(val.array[1:], conn)
+					writer.write(result)
+					break
+				}
+			}
 			continue
 		case "UNSUBSCRIBE":
 			result := unsubscribe(args, conn)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -28,28 +29,49 @@ func unsubscribe(args []value, conn net.Conn) value {
 	}
 	channel := args[0].bulk
 
+	fmt.Println("trying to unsubscribe from:", channel)
+
 	SUBSCRIBEsMu.Lock()
 	defer SUBSCRIBEsMu.Unlock()
-	_, check := SUBSCRIBEs[channel]
+	subscribers, check := SUBSCRIBEs[channel]
+	fmt.Println("channel exists:", check, "subscribers:", len(subscribers))
 	if !check {
 		return value{
 			typ: "integer",
 			num: 0,
 		}
 	}
-	for i, ch := range SUBSCRIBEs[channel] {
+
+	for i, ch := range subscribers {
+
+		fmt.Println("checking sub conn:", ch.conn == conn)
 		if ch.conn == conn {
-			SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel][:i], SUBSCRIBEs[channel][i+1:]...)
+			close(ch.ch)
+			SUBSCRIBEs[channel] = append(subscribers[:i], subscribers[i+1:]...)
 			return value{
-				typ: "integer",
-				num: len(SUBSCRIBEs[channel]),
+				typ: "array",
+				array: []value{
+					{typ: "bulk", bulk: "unsubscribe"},
+					{typ: "bulk", bulk: channel},
+					{typ: "integer", num: len(SUBSCRIBEs[channel])},
+				},
 			}
 		}
 	}
+	// not found case
 	return value{
-		typ: "integer",
-		num: len(SUBSCRIBEs[channel]),
+		typ: "array",
+		array: []value{
+			{typ: "bulk", bulk: "unsubscribe"},
+			{typ: "bulk", bulk: channel},
+			{typ: "integer", num: 0},
+		},
 	}
+}
+
+type Subscriber struct {
+	conn net.Conn
+	ch   chan string
 }
 
 func publish(args []value) value {
@@ -84,36 +106,61 @@ func publish(args []value) value {
 // var SUBSCRIBEs = map[string][]chan string{} // [] because multiple users can listen to a single channel
 // so i cannot simply store it like above because now i need to implement unsubscribe and for that i need somtehing that is unique about all the clients
 // since that is the connection between them, hence
-type Subscriber struct {
-	conn net.Conn
-	ch   chan string
-}
 
 var SUBSCRIBEs = map[string][]Subscriber{}
 var SUBSCRIBEsMu = sync.RWMutex{}
 
-func subscribe(args []value, conn net.Conn) value {
+func subscribe(args []value, conn net.Conn) (value, chan struct{}) {
 	if len(args) != 1 {
 		return value{
 			typ: "error",
 			str: "ERR wrong number of arguments for a SUBSCRIBE command",
-		}
+		}, nil
 	}
 	channel := args[0].bulk
 	ch := make(chan string)
-	sub := Subscriber{conn: conn, ch: ch}
+	sub := Subscriber{
+		conn: conn,
+		ch:   ch,
+	}
 	SUBSCRIBEsMu.Lock()
 	SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel], sub) // this makes that multiple user thing make happen
 	SUBSCRIBEsMu.Unlock()
+	// go func() {
+	// 	writer := Newwriter(conn)
+	// 	for msg := range ch {
+	// 		writer.write(value{
+	// 			typ: "string",
+	// 			str: msg,
+	// 		})
+	// 	}
+	// }() // this was causing immediate returning
+
+	done := make(chan struct{})
+	writer := Newwriter(conn)
+	writer.write(value{
+		typ: "array",
+		array: []value{
+			{typ: "bulk", bulk: "subscribe"},
+			{typ: "bulk", bulk: channel},
+			{typ: "integer", num: 1},
+		},
+	})
 	go func() {
-		writer := Newwriter(conn)
 		for msg := range ch {
 			writer.write(value{
-				typ: "string",
-				str: msg,
+				typ: "array",
+				array: []value{
+					{typ: "bulk", bulk: "message"},
+					{typ: "bulk", bulk: channel},
+					{typ: "bulk", bulk: msg},
+				},
 			})
 		}
+		fmt.Println("ch closed, closing done")
+		close(done) // only closes when ch is closed
 	}()
+	return value{typ: "null"}, done
 	// this part was returning after a single msg
 	// msg := <-ch
 	// return value{
@@ -121,6 +168,7 @@ func subscribe(args []value, conn net.Conn) value {
 	// 	str: msg,
 	// }
 }
+
 func ping(args []value) value {
 	if len(args) == 0 {
 		return value{typ: "string", str: "PONG"}
@@ -318,5 +366,26 @@ func ttl(args []value) value {
 	return value{
 		typ: "integer",
 		num: int(ttl.Seconds()),
+	}
+}
+
+func cleanup(conn net.Conn) {
+	SUBSCRIBEsMu.Lock()
+	defer SUBSCRIBEsMu.Unlock()
+
+	for channel, subscribers := range SUBSCRIBEs {
+		var remaining []Subscriber
+		for _, sub := range subscribers {
+			if sub.conn != conn {
+				remaining = append(remaining, sub)
+			} else {
+				close(sub.ch)
+			}
+		}
+		if len(remaining) == 0 {
+			delete(SUBSCRIBEs, channel)
+		} else {
+			SUBSCRIBEs[channel] = remaining
+		}
 	}
 }
