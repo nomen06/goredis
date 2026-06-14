@@ -105,11 +105,21 @@ func subscribe(args []value, conn net.Conn) value {
 	SUBSCRIBEsMu.Lock()
 	SUBSCRIBEs[channel] = append(SUBSCRIBEs[channel], sub) // this makes that multiple user thing make happen
 	SUBSCRIBEsMu.Unlock()
-	msg := <-ch
-	return value{
-		typ: "string",
-		str: msg,
-	}
+	go func() {
+		writer := Newwriter(conn)
+		for msg := range ch {
+			writer.write(value{
+				typ: "string",
+				str: msg,
+			})
+		}
+	}()
+	// this part was returning after a single msg
+	// msg := <-ch
+	// return value{
+	// 	typ: "string",
+	// 	str: msg,
+	// }
 }
 func ping(args []value) value {
 	if len(args) == 0 {
