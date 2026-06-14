@@ -73,9 +73,11 @@ func publish(args []value) value {
 	for _, ch := range SUBSCRIBEs[channel] {
 		go func(ch chan string) { ch <- message }(ch.ch) // ch may change overtime so passed ch as an arg in the func
 	}
+	SUBSCRIBEsMu.RUnlock()
+	count := len(SUBSCRIBEs[channel])
 	return value{
-		typ:  "bulk",
-		bulk: message,
+		typ: "integer",
+		num: count,
 	}
 }
 
