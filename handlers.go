@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -18,6 +17,47 @@ var handlers = map[string]func([]value) value{
 	"EXPIRE":  expire,
 	"TTL":     ttl,
 	"PUBLISH": publish,
+	"INCR":    increment,
+	"SETEX":   setex,
+}
+
+func setex(args []value) value {
+	if len(args) != 3 {
+		return value{
+			typ: "error",
+			str: "ERR worng number of arguments for a SETEX command",
+		}
+	}
+	key := args[0].bulk
+	seconds, err := strconv.args[1].bulk
+}
+func increment(args []value) value {
+	if len(args) != 1 {
+		return value{
+			typ: "error",
+			str: "ERR wrong number of arguments for an INCR command",
+		}
+	}
+	key := args[0].bulk
+	SETsMu.Lock()
+	defer SETsMu.Unlock()
+	val, err := strconv.Atoi(SETs[key])
+	if err != nil && SETs[key] != "" {
+		return value{
+			typ: "error",
+			str: "The key contains a value of the wrong type",
+		}
+	}
+	// if SETs[key]=="" {
+	// 	val=0
+	// }
+	// don't need this block because if this is true the output is already 0,nil
+
+	SETs[key] = strconv.Itoa(val + 1)
+	return value{
+		typ: "integer",
+		num: val + 1,
+	}
 }
 
 func unsubscribe(args []value, conn net.Conn) value {
@@ -29,12 +69,9 @@ func unsubscribe(args []value, conn net.Conn) value {
 	}
 	channel := args[0].bulk
 
-	fmt.Println("trying to unsubscribe from:", channel)
-
 	SUBSCRIBEsMu.Lock()
 	defer SUBSCRIBEsMu.Unlock()
 	subscribers, check := SUBSCRIBEs[channel]
-	fmt.Println("channel exists:", check, "subscribers:", len(subscribers))
 	if !check {
 		return value{
 			typ: "integer",
@@ -44,7 +81,6 @@ func unsubscribe(args []value, conn net.Conn) value {
 
 	for i, ch := range subscribers {
 
-		fmt.Println("checking sub conn:", ch.conn == conn)
 		if ch.conn == conn {
 			close(ch.ch)
 			SUBSCRIBEs[channel] = append(subscribers[:i], subscribers[i+1:]...)
@@ -110,12 +146,14 @@ func publish(args []value) value {
 var SUBSCRIBEs = map[string][]Subscriber{}
 var SUBSCRIBEsMu = sync.RWMutex{}
 
-func subscribe(args []value, conn net.Conn) (value, chan struct{}) {
+func subscribe(args []value, conn net.Conn) {
 	if len(args) != 1 {
-		return value{
+		writer := Newwriter(conn)
+		writer.write(value{
 			typ: "error",
 			str: "ERR wrong number of arguments for a SUBSCRIBE command",
-		}, nil
+		})
+		return
 	}
 	channel := args[0].bulk
 	ch := make(chan string)
@@ -136,7 +174,6 @@ func subscribe(args []value, conn net.Conn) (value, chan struct{}) {
 	// 	}
 	// }() // this was causing immediate returning
 
-	done := make(chan struct{})
 	writer := Newwriter(conn)
 	writer.write(value{
 		typ: "array",
@@ -157,16 +194,13 @@ func subscribe(args []value, conn net.Conn) (value, chan struct{}) {
 				},
 			})
 		}
-		fmt.Println("ch closed, closing done")
-		close(done) // only closes when ch is closed
+		// this part was returning after a single msg
+		// msg := <-ch
+		// return value{
+		// 	typ: "string",
+		// 	str: msg,
+		// }
 	}()
-	return value{typ: "null"}, done
-	// this part was returning after a single msg
-	// msg := <-ch
-	// return value{
-	// 	typ: "string",
-	// 	str: msg,
-	// }
 }
 
 func ping(args []value) value {
