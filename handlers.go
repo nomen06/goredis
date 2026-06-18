@@ -29,7 +29,25 @@ func setex(args []value) value {
 		}
 	}
 	key := args[0].bulk
-	seconds, err := strconv.args[1].bulk
+	seconds, err := strconv.Atoi(args[1].bulk)
+	val := args[2].bulk
+	if err != nil {
+		return value{
+			typ: "error",
+			str: "ERR in number of seconds",
+		}
+	}
+	SETsMu.Lock()
+	EXPIREsMu.Lock()
+	defer SETsMu.Unlock()
+	defer EXPIREsMu.Unlock()
+	SETs[key] = val
+	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
+	EXPIREs[key] = deadline
+	return value{
+		typ: "string",
+		str: "ok",
+	}
 }
 func increment(args []value) value {
 	if len(args) != 1 {
