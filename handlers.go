@@ -19,8 +19,35 @@ var handlers = map[string]func([]value) value{
 	"PUBLISH": publish,
 	"INCR":    increment,
 	"SETEX":   setex,
+	"DEL":     del,
 }
 
+func del(args []value) value {
+	if len(args) != 1 {
+		return value{
+			typ: "error",
+			str: "ERR wrong number of arguments for a DEL command",
+		}
+	}
+	key := args[0].bulk
+	SETsMu.Lock()
+	defer SETsMu.Unlock()
+	EXPIREsMu.Lock()
+	defer EXPIREsMu.Unlock()
+	_, ok := SETs[key]
+	if !ok {
+		return value{
+			typ: "integer",
+			num: 0,
+		}
+	}
+	delete(SETs, key)
+	delete(EXPIREs, key)
+	return value{
+		typ: "integer",
+		num: 1,
+	}
+}
 func setex(args []value) value {
 	if len(args) != 3 {
 		return value{
