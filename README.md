@@ -7,7 +7,7 @@ Implements the Redis Serialization Protocol (RESP) so any Redis client — inclu
 ## Features
 
 - **RESP protocol** — full parser and writer, compatible with any Redis client
-- **Core commands** — SET, GET with concurrent access via read-write locks
+- **Core commands** — SET, GET, DEL with concurrent access via read-write locks
 - **Hash commands** — HSET, HGET, HGETALL
 - **Key expiry** — EXPIRE and TTL with expiry checking on access
 - **Pub/Sub** — SUBSCRIBE, PUBLISH, UNSUBSCRIBE with per-client goroutines and Go channels for message fanout
@@ -53,8 +53,10 @@ bar
 | PING | `PING` | Health check |
 | SET | `SET key value` | Store a string value |
 | GET | `GET key` | Retrieve a value |
+| DEL | `DEL key` | Delete a key |
 | EXPIRE | `EXPIRE key seconds` | Set expiry on a key |
 | TTL | `TTL key` | Check remaining time on a key |
+| INCR | `INCR key` | Atomically increment a numeric value |
 | HSET | `HSET hash key value` | Set a field in a hash |
 | HGET | `HGET hash key` | Get a field from a hash |
 | HGETALL | `HGETALL hash` | Get all fields from a hash |
@@ -83,6 +85,18 @@ news
 hello
 ```
 
+## Benchmark
+
+Ran a custom benchmark script (`benchmark/main.go`) spinning up 10 concurrent subscribers and publishing 100 messages to measure real Pub/Sub throughput:
+
+```
+Subscribers: 10 | Messages published: 100
+Total messages delivered: 1000 in 4.165008ms
+Throughput: 240096 messages/sec
+```
+
+**~240,000 messages/sec** across 10 concurrent subscribers, with all 1000 message deliveries completing in just over 4 milliseconds.
+
 ## Project structure
 
 ```
@@ -92,6 +106,8 @@ handlers.go   — command logic, in-memory store, pub/sub
 aof.go        — append-only persistence, syncs every second, replays on startup
 client/
   client.go   — CLI client that speaks RESP to the server
+benchmark/
+  main.go     — Pub/Sub throughput benchmark
 ```
 
 ## What I learned
